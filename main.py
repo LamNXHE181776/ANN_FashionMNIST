@@ -43,6 +43,7 @@ class Trainer:
         train_losses, train_accs, val_losses, val_accs = [],[],[],[]
         best_evals = float("inf")
         os.makedirs(save_path, exist_ok=True)
+        os.makedirs("./plots", exist_ok=True)
 
         for epoch in range(epochs):
             time_start = time.time()
@@ -86,7 +87,8 @@ class Trainer:
         plot_train_result(train_accs, 
                           train_losses, 
                           val_accs, 
-                          val_losses)
+                          val_losses, 
+                          os.path.join("./plots", "training_validation_results.png"))
    
         return train_losses, train_accs, val_losses, val_accs
     

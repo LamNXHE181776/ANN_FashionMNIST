@@ -57,7 +57,7 @@ def test(model, test_dataloader, criterion, device):
 
     return avg_loss, accuracy
 
-def plot_train_result(train_accs, train_losses, val_accs, val_losses):
+def plot_train_result(train_accs, train_losses, val_accs, val_losses, img_path):
     sns.set_style("whitegrid")
     epochs = range(1, len(train_accs) + 1)
 
@@ -78,6 +78,8 @@ def plot_train_result(train_accs, train_losses, val_accs, val_losses):
     axs[1].set_title("Losses over Epochs")
     axs[1].legend()
     axs[1].grid(True)
+
+    plt.savefig(img_path)
 
     plt.tight_layout()
     plt.show()
