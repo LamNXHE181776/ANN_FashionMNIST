@@ -3,7 +3,9 @@ from torchvision import datasets
 from src.model import NeuralNetwork
 from src.train import train, test, plot_train_result
 from src.test import preview_test
+
 import torch
+from torch import nn, optim
 from torchinfo import summary
 
 import time
@@ -25,8 +27,10 @@ class Trainer:
         self.num_classes = 10
 
         self.model = NeuralNetwork(self.input_size, self.num_classes).to(self.device)
-        self.criterion = torch.nn.CrossEntropyLoss()
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
+
+        self.criterion = nn.CrossEntropyLoss()
+        self.optimizer = optim.Adam(self.model.parameters(), lr=0.005, weight_decay=1e-5)
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=3)
 
     def preview_data(self, cols, rows):
         preview_image(cols, rows, self.dataset_full)
@@ -53,23 +57,24 @@ class Trainer:
                                      self.criterion, 
                                      self.device)
 
+            self.scheduler.step(val_loss)
+            lr = self.optimizer.param_groups[0]['lr']
+
             time_end = time.time()
 
-            print(f"==== Epoch {epoch+1}/{epochs} ==== \n"
+            print(f"\n==== Epoch {epoch+1}/{epochs} ==== \n"
                   f"==== Train Loss: {train_loss:.4f} ==== \n"
                   f"==== Train Acc: {train_acc:.2f}% ==== \n"
                   f"==== Val Loss: {val_loss:.4f} ==== \n"
                   f"==== Val Acc: {val_acc:.2f}% ==== \n"
                   f"==== Time: {time_end - time_start:.2f}s ====\n"
-                  "\n")
+                  f"==== LR: {lr:.6f} ====\n")
             
             train_losses.append(train_loss)
             train_accs.append(train_acc)
 
             val_losses.append(val_loss)
             val_accs.append(val_acc)
-
-            
         
             if val_loss < best_evals:
                 best_evals = val_loss
@@ -96,7 +101,7 @@ class Trainer:
                                 self.device)
         
         print(f"\n==== Test Loss: {test_loss:.4f} ====\n"
-              f"==== Test Acc: {test_acc:.2f}% ====")
+              f"==== Test Acc: {test_acc:.2f}% ====\n")
         
         preview_test(cols=4, rows=4, 
                      model=model, 
@@ -110,5 +115,5 @@ if __name__ == "__main__":
     trainer = Trainer()
     trainer.model_summary()
     trainer.preview_data(cols=4, rows=4)
-    trainer.train_model(epochs=10, save_path="./saved_models")
+    trainer.train_model(epochs=30, save_path="./saved_models")
     trainer.test_model(model_path="./saved_models/best_fashion_model.pth")
