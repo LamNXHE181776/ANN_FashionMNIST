@@ -1,121 +1,105 @@
-from src.data import data_transform, preview_image
-from torchvision import datasets
-from src.model import NeuralNetwork
-from src.train import train, test, plot_train_result
-from src.test import preview_test
-
-import torch
-from torch import nn, optim
-from torchinfo import summary
-
-import time
 import os
+from train_cnn import Trainer
+import matplotlib.pyplot as plt 
+import pandas as pd
+import seaborn as sns
 
-ROOT = "./data"
+sns.set_style("whitegrid")
 
-class Trainer:
-    def __init__(self):
+def main():
+    cnn_trainer = Trainer(type="CNN")
+    summary = cnn_trainer.model_summary()
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Using device: {self.device}")
+    with open("results/CNN/cnn_model_summary.txt", "w") as f:
+        f.write(str(summary))
 
-        self.dataset_full = datasets.FashionMNIST(root=ROOT, train=True, download=True)
-        self.dataset_test = datasets.FashionMNIST(root=ROOT, train=False, download=True)
-        self.train_dataloader, self.val_dataloader, self.test_dataloader = data_transform(self.dataset_full, self.dataset_test, batch_size=64)
-
-        self.input_size = 28 * 28
-        self.num_classes = 10
-
-        self.model = NeuralNetwork(self.input_size, self.num_classes).to(self.device)
-
-        self.criterion = nn.CrossEntropyLoss()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=0.005, weight_decay=1e-5)
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=3)
-
-    def preview_data(self, cols, rows):
-        preview_image(cols, rows, self.dataset_full)
+    cnn_trainer.preview_data(cols=4, rows=4)
+    cnn_trainer.train_model(epochs=30, save_path="./saved_models/CNN")
+    cnn_trainer.plot_training_results(plot_path="./results/CNN")
+    cnn_trainer.test_model(model_path="./saved_models/CNN/best_fashion_model.pth")
     
-    def model_summary(self):
-        summary(self.model, input_size=(1,28*28))
 
-    def train_model(self, epochs, save_path):
+    ann_trainer = Trainer(type="ANN")
 
-        train_losses, train_accs, val_losses, val_accs = [],[],[],[]
-        best_evals = float("inf")
-        os.makedirs(save_path, exist_ok=True)
-        os.makedirs("./plots", exist_ok=True)
+    with open("results/ANN/ann_model_summary.txt", "w") as f:
+        f.write(str(ann_trainer.model_summary()))
 
-        for epoch in range(epochs):
-            time_start = time.time()
+    ann_trainer.preview_data(cols=4, rows=4)
+    ann_trainer.train_model(epochs=30, save_path="./saved_models/ANN")
+    ann_trainer.plot_training_results(plot_path="./results/ANN")  
+    ann_trainer.test_model(model_path="./saved_models/ANN/best_fashion_model.pth")
 
-            train_loss, train_acc = train(self.model, 
-                                          self.train_dataloader, 
-                                          self.criterion, self.optimizer, 
-                                          self.device)
-            
-            val_loss, val_acc = test(self.model, 
-                                     self.val_dataloader, 
-                                     self.criterion, 
-                                     self.device)
+    os.makedirs("results", exist_ok=True)
 
-            self.scheduler.step(val_loss)
-            lr = self.optimizer.param_groups[0]['lr']
+    comparison_data = {
+        "Epoch": list(range(1, 31)),
+        "CNN_Train_Acc": cnn_trainer.train_accs,
+        "CNN_Val_Acc": cnn_trainer.val_accs,
+        "CNN_Train_Loss": cnn_trainer.train_losses,
+        "CNN_Val_Loss": cnn_trainer.val_losses,
+        "CNN_Time": cnn_trainer.time,
+        "ANN_Train_Acc": ann_trainer.train_accs,
+        "ANN_Val_Acc": ann_trainer.val_accs,
+        "ANN_Train_Loss": ann_trainer.train_losses,
+        "ANN_Val_Loss": ann_trainer.val_losses,
+        "ANN_Time": ann_trainer.time
+    }
 
-            time_end = time.time()
+    df_comparison = pd.DataFrame(comparison_data)
+    df_comparison.to_csv("results/comparison_data.csv", index=False)
 
-            print(f"\n==== Epoch {epoch+1}/{epochs} ==== \n"
-                  f"==== Train Loss: {train_loss:.4f} ==== \n"
-                  f"==== Train Acc: {train_acc:.2f}% ==== \n"
-                  f"==== Val Loss: {val_loss:.4f} ==== \n"
-                  f"==== Val Acc: {val_acc:.2f}% ==== \n"
-                  f"==== Time: {time_end - time_start:.2f}s ====\n"
-                  f"==== LR: {lr:.6f} ====\n")
-            
-            train_losses.append(train_loss)
-            train_accs.append(train_acc)
+    fig, axs = plt.subplots(2, 3, figsize=(12, 6))
 
-            val_losses.append(val_loss)
-            val_accs.append(val_acc)
-        
-            if val_loss < best_evals:
-                best_evals = val_loss
-                torch.save(self.model.state_dict(), os.path.join(save_path, "best_fashion_model.pth"))
-                print("Best model save in path: ", os.path.join(save_path, "best_fashion_model.pth"))
+    axs[0,0].set_title("CNN vs ANN Training and Validation Accuracy")
+    axs[0,0].plot(cnn_trainer.train_accs, label="CNN Train Accuracy")
+    axs[0,0].plot(cnn_trainer.val_accs, label="CNN Validation Accuracy")
+    axs[0,0].plot(ann_trainer.train_accs, label="ANN Train Accuracy")
+    axs[0,0].plot(ann_trainer.val_accs, label="ANN Validation Accuracy")
 
-        torch.save(self.model.state_dict(), os.path.join(save_path, "final_fashion_model.pth"))
+    axs[0,0].set_xlabel("Epochs")
+    axs[0,0].set_ylabel("Accuracy (%)")
+    axs[0,0].legend()
+    axs[0,0].grid()
 
-        plot_train_result(train_accs, 
-                          train_losses, 
-                          val_accs, 
-                          val_losses, 
-                          os.path.join("./plots", "training_validation_results.png"))
-   
-        return train_losses, train_accs, val_losses, val_accs
-    
-    def test_model(self, model_path):
+    axs[0,1].set_title("CNN vs ANN Training and Validation Loss")
+    axs[0,1].plot(ann_trainer.train_losses, label="ANN Train Loss")
+    axs[0,1].plot(ann_trainer.val_losses, label="ANN Validation Loss")
+    axs[0,1].plot(cnn_trainer.train_losses, label="CNN Train Loss")
+    axs[0,1].plot(cnn_trainer.val_losses, label="CNN Validation Loss")
+    axs[0,1].set_xlabel("Epochs")
+    axs[0,1].set_ylabel("Losses")
+    axs[0,1].legend()
+    axs[0,1].grid()
 
-        model = NeuralNetwork(self.input_size, self.num_classes).to(self.device)
-        model.load_state_dict(torch.load(model_path, map_location=self.device))
+    axs[0,2].set_title("ANN vs CNN Learning Rate")
+    axs[0,2].plot(ann_trainer.lr, label="ANN LR")
+    axs[0,2].plot(cnn_trainer.lr, label="CNN LR")
+    axs[0,2].set_xlabel("Epochs")
+    axs[0,2].set_ylabel("Learning Rate")
+    axs[0,2].legend()
+    axs[0,2].grid()
 
-        test_loss, test_acc = test(model, 
-                                self.test_dataloader, 
-                                self.criterion,
-                                self.device)
-        
-        print(f"\n==== Test Loss: {test_loss:.4f} ====\n"
-              f"==== Test Acc: {test_acc:.2f}% ====\n")
-        
-        preview_test(cols=4, rows=4, 
-                     model=model, 
-                     dataset_test=self.dataset_test, 
-                     device=self.device)
-        
-        return test_loss, test_acc
-    
+    axs[1,0].set_title("Test Accuracy Comparison")
+    axs[1,0].bar(["CNN", "ANN"], [cnn_trainer.test_acc, ann_trainer.test_acc], color=['blue', 'orange'], width=0.3)
+    axs[1,0].set_ylim(87, 92)
+    axs[1,0].set_ylabel("Accuracy (%)")
+    axs[1,0].grid()
+
+    axs[1,1].set_title("Test Loss Comparison")
+    axs[1,1].bar(["CNN", "ANN"], [cnn_trainer.test_loss, ann_trainer.test_loss], color=['blue', 'orange'], width=0.3)
+    axs[1,1].set_ylabel("Loss")
+    axs[1,1].grid()
+
+    axs[1,2].set_title("Training Time Comparison")
+    axs[1,2].bar(["CNN", "ANN"], [sum(cnn_trainer.time), sum(ann_trainer.time)], color=['blue', 'orange'], width=0.3)
+    axs[1,2].set_ylim(200, max(sum(cnn_trainer.time), sum(ann_trainer.time)) * 1.2)
+    axs[1,2].set_ylabel("Time (s)")
+    axs[1,2].grid()
+
+    plt.tight_layout()
+    plt.savefig("results/comparison_cnn_ann.png")
+    plt.show()
+
 
 if __name__ == "__main__":
-    trainer = Trainer()
-    trainer.model_summary()
-    trainer.preview_data(cols=4, rows=4)
-    trainer.train_model(epochs=30, save_path="./saved_models")
-    trainer.test_model(model_path="./saved_models/best_fashion_model.pth")
+    main()    

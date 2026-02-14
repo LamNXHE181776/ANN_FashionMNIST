@@ -1,3 +1,3 @@
 # ANN_FashionMNIST
 
-To run the program, activate main.py
+To run the program, activate `main.py`
